@@ -29,20 +29,33 @@ namespace hardware {
 namespace bluetooth {
 namespace hci {
 
-size_t H4Protocol::Send(uint8_t type, const uint8_t* data, size_t length) {
-  struct iovec iov[] = {{&type, sizeof(type)},
-                        {const_cast<uint8_t*>(data), length}};
-  ssize_t ret = 0;
-  do {
-    ret = TEMP_FAILURE_RETRY(writev(uart_fd_, iov, sizeof(iov) / sizeof(iov[0])));
-  } while (-1 == ret && EAGAIN == errno);
+size_t H4Protocol::Send(uint8_t type, const uint8_t* data, size_t length){
+ /* For HCI communication over USB dongle, multiple write results in
+     * response timeout as driver expect type + data at once to process
+     * the command, so using "writev"(for atomicity) here.
+     */
+    struct iovec iov[2];
+    ssize_t ret = 0;
+    iov[0].iov_base = &type;
+    iov[0].iov_len = sizeof(type);
+    iov[1].iov_base = (void *)data;
+    iov[1].iov_len = length;
 
-  if (ret == -1) {
-    ALOGE("%s error writing to UART (%s)", __func__, strerror(errno));
-  } else if (ret < static_cast<ssize_t>(length + 1)) {
-    ALOGE("%s: %d / %d bytes written - something went wrong...", __func__,
-          static_cast<int>(ret), static_cast<int>(length + 1));
-  }
+    ALOGE("%x %x %x", data[0],data[1],data[2]);
+    while (1) {
+        ret = TEMP_FAILURE_RETRY(writev(uart_fd_, iov, 2));
+        if (ret == -1) {
+            if (errno == EAGAIN) {
+                ALOGE("%s error writing to UART (%s)", __func__, strerror(errno));
+                continue;
+            }
+        } else if (ret == 0) {
+            // Nothing written :(
+            ALOGE("%s zero bytes written - something went wrong...", __func__);
+            break;
+        }
+        break;
+    }
   return ret;
 }
 
@@ -66,31 +79,27 @@ void H4Protocol::OnPacketReady() {
 }
 
 void H4Protocol::OnDataReady(int fd) {
-  if (hci_packet_type_ == HCI_PACKET_TYPE_UNKNOWN) {
-    uint8_t buffer[1] = {0};
-    ssize_t bytes_read = TEMP_FAILURE_RETRY(read(fd, buffer, 1));
-    if (bytes_read != 1) {
-      if (bytes_read == 0) {
-        LOG_ALWAYS_FATAL("%s: Unexpected EOF reading the packet type!",
-                         __func__);
-      } else if (bytes_read < 0) {
-        LOG_ALWAYS_FATAL("%s: Read packet type error: %s", __func__,
-                         strerror(errno));
-      } else {
-        LOG_ALWAYS_FATAL("%s: More bytes read than expected (%u)!", __func__,
-                         static_cast<unsigned int>(bytes_read));
-      }
+if (hci_packet_type_ == HCI_PACKET_TYPE_UNKNOWN) {
+        /**
+         * read full buffer. ACL max length is 2 bytes, and SCO max length is 2
+         * byte. so taking 64K as buffer length.
+         * Question : Why to read in single chunk rather than multiple reads,
+         * which can give parameter length arriving in response ?
+         * Answer: The multiple reads does not work with BT USB dongle. At least
+         * with Bluetooth 2.0 supported USB dongle. After first read, either
+         * firmware/kernel (do not know who is responsible - inputs ??) driver
+         * discard the whole message and successive read results in forever
+         * blocking loop. - Is there any other way to make it work with multiple
+         * reads, do not know yet (it can eliminate need of this function) ?
+         * Reading in single shot gives expected response.
+         */
+        const size_t max_plen = 64*1024;
+        hidl_vec<uint8_t> tpkt;
+        tpkt.resize(max_plen);
+        size_t bytes_read = TEMP_FAILURE_RETRY(read(fd, tpkt.data(), max_plen));
+        hci_packet_type_ = static_cast<HciPacketType>(tpkt.data()[0]);
+        hci_packetizer_.CbHciPacket(tpkt.data()+1, bytes_read-1);
     }
-    hci_packet_type_ = static_cast<HciPacketType>(buffer[0]);
-    if (hci_packet_type_ != HCI_PACKET_TYPE_ACL_DATA &&
-        hci_packet_type_ != HCI_PACKET_TYPE_SCO_DATA &&
-        hci_packet_type_ != HCI_PACKET_TYPE_EVENT) {
-      LOG_ALWAYS_FATAL("%s: Unimplemented packet type %d", __func__,
-                       static_cast<int>(hci_packet_type_));
-    }
-  } else {
-    hci_packetizer_.OnDataReady(fd, hci_packet_type_);
-  }
 }
 
 }  // namespace hci
