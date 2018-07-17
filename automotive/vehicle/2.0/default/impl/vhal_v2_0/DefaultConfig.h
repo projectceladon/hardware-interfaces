@@ -211,23 +211,6 @@ const ConfigDeclaration kVehicleProperties[]{
      .initialAreaValues = {{toInt(VehicleAreaZone::ROW_1_LEFT), {.floatValues = {16}}},
                            {toInt(VehicleAreaZone::ROW_1_RIGHT), {.floatValues = {20}}}}},
 
-    {.config = {.prop = toInt(VehicleProperty::HVAC_SEAT_TEMPERATURE),
-                .access = VehiclePropertyAccess::READ_WRITE,
-                .changeMode = VehiclePropertyChangeMode::ON_CHANGE,
-                .supportedAreas = VehicleAreaZone::ROW_1_LEFT | VehicleAreaZone::ROW_1_RIGHT,
-                .areaConfigs = {VehicleAreaConfig{
-                                    .areaId = toInt(VehicleAreaZone::ROW_1_LEFT),
-                                    .minInt32Value = 0,
-                                    .maxInt32Value = 3,
-                                },
-                                VehicleAreaConfig{
-                                    .areaId = toInt(VehicleAreaZone::ROW_1_RIGHT),
-                                    .minInt32Value = 0,
-                                    .maxInt32Value = 3,
-                                }}},
-     .initialAreaValues = {{toInt(VehicleAreaZone::ROW_1_LEFT), {.int32Values = {0}}},
-                           {toInt(VehicleAreaZone::ROW_1_RIGHT), {.int32Values = {0}}}}},
-
     {.config =
          {
              .prop = toInt(VehicleProperty::ENV_OUTSIDE_TEMPERATURE),
