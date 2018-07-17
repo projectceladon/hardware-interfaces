@@ -155,15 +155,6 @@ StatusCode EmulatedVehicleHal::set(const VehiclePropValue& propValue) {
 
     if (!mPropStore->writeValue(propValue)) {
         return StatusCode::INVALID_ARG;
-    } else {
-       /*
-        * w/a for the sync issue of HVAC app and KitchSink app.
-        * Currently, there's no real vehicle system for our platform, when we set a property
-        * to vehicle, there's no feedback. So when set a value on HVAC app or KitchSink app,
-        * there will no notification to the other app.
-        * We report a HAL event here to w/a this issue.
-        */
-        doHalEvent(getValuePool()->obtain(propValue));
     }
 
     getEmulatorOrDie()->doSetValueFromClient(propValue);
